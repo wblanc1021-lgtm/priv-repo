@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.credits is int && data.credits >= 0 &&
+             (!('tier' in data) || (data.tier is string && data.tier.size() <= 32)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRecastProject(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 120 &&
+             (!('sourceVideoName' in data) || (data.sourceVideoName is string && data.sourceVideoName.size() <= 256)) &&
+             (!('sourceVideoDuration' in data) || (data.sourceVideoDuration is int && data.sourceVideoDuration >= 0 && data.sourceVideoDuration <= 300)) &&
+             (!('sourceVideoResolution' in data) || (data.sourceVideoResolution is string && data.sourceVideoResolution.size() <= 32)) &&
+             (!('primaryReferenceName' in data) || (data.primaryReferenceName is string && data.primaryReferenceName.size() <= 256)) &&
+             (!('secondaryReferencesCount' in data) || (data.secondaryReferencesCount is int && data.secondaryReferencesCount >= 0 && data.secondaryReferencesCount <= 10)) &&
+             data.characterStrength is int && data.characterStrength >= 0 && data.characterStrength <= 100 &&
+             (!('facePriority' in data) || data.facePriority is bool) &&
+             (!('identityConsistency' in data) || (data.identityConsistency is int && data.identityConsistency >= 0 && data.identityConsistency <= 100)) &&
+             (!('lightingAdaptation' in data) || (data.lightingAdaptation is int && data.lightingAdaptation >= 0 && data.lightingAdaptation <= 100)) &&
+             (!('motionFidelity' in data) || (data.motionFidelity is int && data.motionFidelity >= 0 && data.motionFidelity <= 100)) &&
+             (!('edgeRefinement' in data) || (data.edgeRefinement is int && data.edgeRefinement >= 0 && data.edgeRefinement <= 100)) &&
+             (!('temporalConsistency' in data) || (data.temporalConsistency is int && data.temporalConsistency >= 0 && data.temporalConsistency <= 100)) &&
+             data.qualityPreset is string && (data.qualityPreset == 'draft' || data.qualityPreset == 'standard' || data.qualityPreset == 'high' || data.qualityPreset == 'max') &&
+             (!('resolution' in data) || (data.resolution is string && data.resolution.size() <= 32)) &&
+             (!('variantsCount' in data) || (data.variantsCount is int && data.variantsCount >= 1 && data.variantsCount <= 4)) &&
+             (!('seed' in data) || (data.seed is int)) &&
+             (!('protectBackground' in data) || data.protectBackground is bool) &&
+             (!('voiceMode' in data) || (data.voiceMode is string && data.voiceMode.size() <= 32)) &&
+             (!('voiceName' in data) || (data.voiceName is string && data.voiceName.size() <= 64)) &&
+             (!('ttsDialogue' in data) || (data.ttsDialogue is string && data.ttsDialogue.size() <= 2000)) &&
+             (!('lipSyncStrength' in data) || (data.lipSyncStrength is int && data.lipSyncStrength >= 0 && data.lipSyncStrength <= 100)) &&
+             data.status is string && (data.status == 'draft' || data.status == 'processing' || data.status == 'completed' || data.status == 'failed') &&
+             (!('resultVideoTitle' in data) || (data.resultVideoTitle is string && data.resultVideoTitle.size() <= 256)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPromptExperiment(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 120 &&
+             (!('systemInstruction' in data) || (data.systemInstruction is string && data.systemInstruction.size() <= 4000)) &&
+             data.promptText is string && data.promptText.size() <= 4000 &&
+             data.modelA is string && data.modelA.size() <= 64 &&
+             (!('modelB' in data) || (data.modelB is string && data.modelB.size() <= 64)) &&
+             (!('temperature' in data) || (data.temperature is number)) &&
+             (!('topP' in data) || (data.topP is number)) &&
+             (!('thinkingLevel' in data) || (data.thinkingLevel is string && data.thinkingLevel.size() <= 32)) &&
+             data.version is int && data.version >= 1 &&
+             (!('responseA' in data) || (data.responseA is string && data.responseA.size() <= 10000)) &&
+             (!('responseB' in data) || (data.responseB is string && data.responseB.size() <= 10000)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // User Profile Document
+    match /users/{userId} {
+      allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'credits', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'credits', 'tier', 'updatedAt']);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+
+      // User Projects Subcollection
+      match /projects/{projectId} {
+        allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         isValidId(projectId) &&
+                         incoming().id == projectId &&
+                         incoming().keys().hasAll(['id', 'userId', 'title', 'characterStrength', 'qualityPreset', 'status', 'createdAt', 'updatedAt']) &&
+                         isValidRecastProject(incoming());
+
+        allow update: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().id == existing().id &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidRecastProject(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'sourceVideoName', 'sourceVideoDuration', 'sourceVideoResolution',
+                           'primaryReferenceName', 'secondaryReferencesCount', 'characterStrength',
+                           'facePriority', 'identityConsistency', 'lightingAdaptation', 'motionFidelity',
+                           'edgeRefinement', 'temporalConsistency', 'qualityPreset', 'resolution',
+                           'variantsCount', 'seed', 'protectBackground', 'voiceMode', 'voiceName',
+                           'ttsDialogue', 'lipSyncStrength', 'status', 'resultVideoTitle', 'updatedAt'
+                         ]);
+
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      // Prompt Engineering Experiments Subcollection
+      match /prompts/{promptId} {
+        allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         isValidId(promptId) &&
+                         incoming().id == promptId &&
+                         incoming().keys().hasAll(['id', 'userId', 'title', 'promptText', 'modelA', 'version', 'createdAt', 'updatedAt']) &&
+                         isValidPromptExperiment(incoming());
+
+        allow update: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().id == existing().id &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidPromptExperiment(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'systemInstruction', 'promptText', 'modelA', 'modelB',
+                           'temperature', 'topP', 'thinkingLevel', 'version',
+                           'responseA', 'responseB', 'updatedAt'
+                         ]);
+
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+  }
+}

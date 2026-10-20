@@ -1,0 +1,6 @@
+{
+  "name": "FrameShift",
+  "description": "AI Video Recast & Character Swap Studio with fidelity controls, neural voice synthesis, and multi-model prompt lab.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

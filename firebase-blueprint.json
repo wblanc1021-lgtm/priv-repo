@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information and recast usage quotas",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The authenticated user ID" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "email": { "type": "string", "description": "User email address" },
+        "credits": { "type": "integer", "description": "Available recast credits" },
+        "tier": { "type": "string", "description": "Account tier: standard or pro" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp via serverTimestamp()" }
+      },
+      "required": ["userId", "displayName", "email", "credits", "createdAt", "updatedAt"]
+    },
+    "RecastProject": {
+      "title": "RecastProject",
+      "description": "Video character/camera-person swap project with fidelity controls and output variants",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique project identifier" },
+        "userId": { "type": "string", "description": "The creator user ID" },
+        "title": { "type": "string", "description": "Project title" },
+        "sourceVideoName": { "type": "string", "description": "Name or identifier of source video" },
+        "sourceVideoDuration": { "type": "integer", "description": "Duration in seconds (5-30s)" },
+        "sourceVideoResolution": { "type": "string", "description": "e.g. 720p, 1080p, 1440p" },
+        "primaryReferenceName": { "type": "string", "description": "Primary character reference description or asset" },
+        "secondaryReferencesCount": { "type": "integer", "description": "Number of supplementary reference angles" },
+        "characterStrength": { "type": "integer", "description": "Swap strength slider 0-100" },
+        "facePriority": { "type": "boolean", "description": "Face priority vs full-body priority" },
+        "identityConsistency": { "type": "integer", "description": "Reference match strictness 0-100" },
+        "lightingAdaptation": { "type": "integer", "description": "Lighting blend fidelity 0-100" },
+        "motionFidelity": { "type": "integer", "description": "Motion copy vs naturalization 0-100" },
+        "edgeRefinement": { "type": "integer", "description": "Edge/hair refinement 0-100" },
+        "temporalConsistency": { "type": "integer", "description": "Flicker reduction 0-100" },
+        "qualityPreset": { "type": "string", "description": "draft, standard, high, max" },
+        "resolution": { "type": "string", "description": "Target resolution 720p, 1080p, 1440p" },
+        "variantsCount": { "type": "integer", "description": "Number of output variants: 1, 2, or 4" },
+        "seed": { "type": "integer", "description": "Generation seed" },
+        "protectBackground": { "type": "boolean", "description": "Whether background regions are locked" },
+        "voiceMode": { "type": "string", "description": "original, speech_to_speech, tts_replace, hybrid, narration" },
+        "voiceName": { "type": "string", "description": "Voice identifier like Kore, Puck, Fenrir" },
+        "ttsDialogue": { "type": "string", "description": "Custom dialogue if TTS mode enabled" },
+        "lipSyncStrength": { "type": "integer", "description": "Lip sync strictness 0-100" },
+        "status": { "type": "string", "description": "draft, processing, completed, failed" },
+        "resultVideoTitle": { "type": "string", "description": "Generated output reference" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp via serverTimestamp()" }
+      },
+      "required": ["id", "userId", "title", "characterStrength", "qualityPreset", "status", "createdAt", "updatedAt"]
+    },
+    "PromptExperiment": {
+      "title": "PromptExperiment",
+      "description": "AI Studio style prompt engineering and model evaluation lab record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Prompt experiment unique ID" },
+        "userId": { "type": "string", "description": "The creator user ID" },
+        "title": { "type": "string", "description": "Experiment title" },
+        "systemInstruction": { "type": "string", "description": "System persona instructions" },
+        "promptText": { "type": "string", "description": "User prompt text" },
+        "modelA": { "type": "string", "description": "Primary model tested (e.g., gemini-3.8-flash)" },
+        "modelB": { "type": "string", "description": "Comparison model tested (e.g., gemini-4-argon)" },
+        "temperature": { "type": "number", "description": "Sampling temperature" },
+        "topP": { "type": "number", "description": "Top-P sampling" },
+        "thinkingLevel": { "type": "string", "description": "Thinking mode level (low, high)" },
+        "version": { "type": "integer", "description": "Iteration revision number" },
+        "responseA": { "type": "string", "description": "Output from Model A" },
+        "responseB": { "type": "string", "description": "Output from Model B" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp via serverTimestamp()" }
+      },
+      "required": ["id", "userId", "title", "promptText", "modelA", "version", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User private profile document"
+    },
+    "/users/{userId}/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/RecastProject" },
+      "description": "Recast video swap projects owned by user"
+    },
+    "/users/{userId}/prompts/{promptId}": {
+      "schema": { "$ref": "#/entities/PromptExperiment" },
+      "description": "Prompt iterations and evaluation runs owned by user"
+    }
+  }
+}
