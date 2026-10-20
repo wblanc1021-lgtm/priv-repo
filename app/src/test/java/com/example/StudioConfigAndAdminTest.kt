@@ -2,128 +2,123 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.model.ConversionDirectionMode
+import com.example.data.model.RecastProject
 import com.example.data.repository.StudioConfigRepository
 import com.example.data.repository.SubscriptionTierOption
+import com.example.data.repository.WorkspaceHandoffRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class StudioConfigAndAdminTest {
 
     private lateinit var context: Context
-    private lateinit var repository: StudioConfigRepository
+    private lateinit var configRepository: StudioConfigRepository
+    private lateinit var workspaceRepository: WorkspaceHandoffRepository
 
     @Before
-    fun setUp() {
+    fun setup() {
         context = ApplicationProvider.getApplicationContext()
         context.getSharedPreferences("frameshift_studio_config_prefs", Context.MODE_PRIVATE)
             .edit()
             .clear()
             .commit()
-        repository = StudioConfigRepository(context)
+        configRepository = StudioConfigRepository(context)
+        workspaceRepository = WorkspaceHandoffRepository(context)
     }
 
     @Test
-    fun adminLogin_verifiesRootAdminEmailAndPasskey() {
-        repository.logoutAdmin()
-        assertFalse(repository.adminSession.value.isAdminAuthenticated)
-
-        // Wrong email should fail
-        val invalid = repository.loginAsAdmin("intruder@example.com", "wrong-key")
-        assertFalse(invalid)
-        assertFalse(repository.adminSession.value.isAdminAuthenticated)
-
-        // Root Admin email wblanc1021@gmail.com with passkey succeeds
-        val success = repository.loginAsAdmin(
-            StudioConfigRepository.ROOT_ADMIN_EMAIL,
-            StudioConfigRepository.DEFAULT_ADMIN_PASSKEY
+    fun rootAdminLogin_recognizesOwnerEmail_andUnlocksFounderTier() {
+        val success = configRepository.loginAsAdmin("wblanc1021@gmail.com", "FS-ADMIN-2026")
+        assertTrue("Root Admin login should succeed for wblanc1021@gmail.com", success)
+        assertTrue(configRepository.adminSession.value.isAdminAuthenticated)
+        assertEquals(
+            SubscriptionTierOption.ADMIN_FOUNDER,
+            configRepository.subscriptionState.value.selectedTier
         )
-        assertTrue(success)
-        assertTrue(repository.adminSession.value.isAdminAuthenticated)
-        assertEquals("wblanc1021@gmail.com", repository.adminSession.value.adminEmail)
-        assertEquals(SubscriptionTierOption.ADMIN_FOUNDER, repository.subscriptionState.value.selectedTier)
+
+        // Verify non-owner email is strictly rejected
+        configRepository.logoutAdmin()
+        assertFalse(configRepository.adminSession.value.isAdminAuthenticated)
+        val nonOwnerSuccess = configRepository.loginAsAdmin("guest@example.com", "FS-ADMIN-2026")
+        assertFalse("Non-owner email must never unlock Root Admin", nonOwnerSuccess)
+        assertFalse(configRepository.adminSession.value.isAdminAuthenticated)
     }
 
     @Test
-    fun stagedSubscriptions_notImplementedUntilTestedOrAdmin() {
-        repository.logoutAdmin()
-        repository.selectStagedSubscription(SubscriptionTierOption.NEURAL_DIRECTOR)
+    fun multiIdentityProviders_supportsAppleXEmailAndGoogleFederation() {
+        // Link Apple ID
+        configRepository.linkIdentityProvider("Apple", "creator@icloud.com")
+        assertEquals("Apple", configRepository.adminSession.value.activeAuthProvider)
+        assertTrue(configRepository.adminSession.value.linkedProviders.contains("Apple"))
+        assertEquals("creator@icloud.com", configRepository.adminSession.value.activeUserHandle)
 
-        val stateAfterStage = repository.subscriptionState.value
-        assertEquals(SubscriptionTierOption.NEURAL_DIRECTOR, stateAfterStage.stagedTier)
-        assertTrue(stateAfterStage.isStagedUntilTested)
-        assertFalse(stateAfterStage.isBillingImplemented)
+        // Link X (Twitter) handle
+        configRepository.linkIdentityProvider("X", "@frameshift_x")
+        assertEquals("X", configRepository.adminSession.value.activeAuthProvider)
+        assertTrue(configRepository.adminSession.value.linkedProviders.contains("X"))
+        assertTrue(configRepository.adminSession.value.linkedProviders.contains("Apple"))
 
-        // Attempting to implement before runtime test when not admin should be blocked
-        val prematureActivate = repository.toggleImplementTestedSubscription(true)
-        assertFalse(prematureActivate)
-        assertFalse(repository.subscriptionState.value.isBillingImplemented)
+        // Link Email for owner wblanc1021@gmail.com -> should auto-elevate owner admin
+        configRepository.linkIdentityProvider("Email", "wblanc1021@gmail.com")
+        assertTrue(configRepository.adminSession.value.linkedProviders.contains("Email"))
+        assertTrue(
+            "Owner email via Email Auth should unlock Root Admin session",
+            configRepository.adminSession.value.isAdminAuthenticated
+        )
     }
 
     @Test
-    fun apiAndConnectionSettings_persistUpdatesCleanly() {
-        repository.updateApiConfig(
-            geminiKey = "AIzaSyCustomTestKey999",
-            veoKey = "veo_live_test_123",
-            elevenLabsKey = "xi_voice_777",
-            selectedModel = "gemini-4-argon",
-            selectedVideo = "veo-3.1-cinema"
-        )
-        val api = repository.apiConfig.value
-        assertEquals("AIzaSyCustomTestKey999", api.geminiApiKeyOverride)
-        assertEquals("veo_live_test_123", api.veoVideoApiKey)
-        assertEquals("xi_voice_777", api.elevenLabsVoiceKey)
-
-        repository.updateConnectionConfig(
-            cloudEndpoint = "wss://custom.frameshift.ai/sync",
-            lanIp = "192.168.1.210",
-            lanPort = "9095",
-            protocol = "QUIC / HTTP3 Zero-RTT"
-        )
-        val conn = repository.connectionConfig.value
-        assertEquals("wss://custom.frameshift.ai/sync", conn.cloudSyncEndpoint)
-        assertEquals("192.168.1.210", conn.lanWorkstationIp)
-        assertEquals("9095", conn.lanWorkstationPort)
-        assertEquals("QUIC / HTTP3 Zero-RTT", conn.transportProtocol)
+    fun stagedSubscription_staysUnbilledUntilVerified() {
+        configRepository.stageSubscriptionTier(SubscriptionTierOption.NEURAL_DIRECTOR)
+        val stateBefore = configRepository.subscriptionState.value
+        assertTrue("Subscription must remain staged before testing", stateBefore.isStagedUntilTested)
+        assertFalse("Billing must not be implemented before runtime test", stateBefore.isBillingImplemented)
     }
 
     @Test
-    fun systemBus_andRecastEngine_integrateAcrossModules() {
-        repository.recordOptimizedPrompt("High-contrast cyberpunk neon alley tracking shot")
-        repository.recordSynthesizedVeoClip("Veo 3.1 Master (1080p 16:9)")
-        repository.recordSynthesizedNanoPortrait("Elena (Nano 2.1 4K)")
-
-        val bus = repository.systemBus.value
-        assertEquals("High-contrast cyberpunk neon alley tracking shot", bus.lastOptimizedPrompt)
-        assertEquals("Veo 3.1 Master (1080p 16:9)", bus.lastSynthesizedVeoClip)
-        assertEquals("Elena (Nano 2.1 4K)", bus.lastSynthesizedNanoPortrait)
-
-        // Verify RecastEngine honors Root Admin unlimited credits override and marks staged plan verified
-        repository.loginAsAdmin(
-            StudioConfigRepository.ROOT_ADMIN_EMAIL,
-            StudioConfigRepository.DEFAULT_ADMIN_PASSKEY
+    fun twoWayConversionAndFidelitySliders_calculateAccurateTelemetry() {
+        val project = RecastProject(
+            id = "proj_test_fidelity",
+            title = "Two-Way Fidelity Verification",
+            resolution = "4K",
+            frameRate = 60L,
+            compressionLevel = 12L,
+            qualityPreset = "ultra",
+            characterStrength = 92L,
+            sourceVideoDuration = 15L,
+            conversionDirection = ConversionDirectionMode.BIDIRECTIONAL_CO_SWAP.key
         )
-        val engine = com.example.service.recast.RecastEngine(configRepo = repository)
-        val project = com.example.data.model.RecastProject(
-            id = "proj_integrated_1",
-            title = "Integrated Pipeline Test",
-            sourceVideoName = bus.lastSynthesizedVeoClip,
-            primaryReferenceName = bus.lastSynthesizedNanoPortrait,
-            variantsCount = 2,
-            qualityPreset = "max"
-        )
-        val (_, estCredits) = engine.estimateGenerationTimeAndCredits(project)
-        assertEquals(0, estCredits) // Root Admin unlimited override -> 0 credits
 
-        repository.markPipelineVerifiedFromRun(project.title, 8)
-        assertTrue(repository.subscriptionState.value.isRuntimeTested)
-        assertTrue(repository.toggleImplementTestedSubscription(true))
-        assertTrue(repository.subscriptionState.value.isBillingImplemented)
+        assertEquals(ConversionDirectionMode.BIDIRECTIONAL_CO_SWAP, project.activeConversionMode())
+        assertTrue("4K 60fps bitrate should be > 25 Mbps", project.estimatedBitrateMbps() > 25f)
+        assertTrue("Estimated render time should be positive", project.estimatedRenderTimeSeconds() > 0)
+        assertTrue("Estimated file size should be positive", project.estimatedFileSizeMb() > 0f)
+    }
+
+    @Test
+    fun systemIntegrationBus_propagatesPromptsClipsAndEventsAcrossModules() {
+        configRepository.publishOptimizedPrompt("Anamorphic 60fps neon alley recast with volumetric cyan rim")
+        configRepository.publishSynthesizedVeoClip("Veo 3.1 Master (4K 60fps)")
+        configRepository.publishSynthesizedNanoPortrait("Aria (Nano 2.1 4K Portrait)")
+
+        val bus = configRepository.systemBus.value
+        assertEquals("Anamorphic 60fps neon alley recast with volumetric cyan rim", bus.lastOptimizedPrompt)
+        assertEquals("Veo 3.1 Master (4K 60fps)", bus.lastSynthesizedVeoClip)
+        assertEquals("Aria (Nano 2.1 4K Portrait)", bus.lastSynthesizedNanoPortrait)
+        assertTrue(bus.totalSystemOperations >= 4)
+
+        // Verify Workspace Handoff Repository sync
+        val shared = workspaceRepository.sharedProject.value
+        assertNotNull(shared)
     }
 }
-

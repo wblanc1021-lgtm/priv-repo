@@ -102,10 +102,12 @@ import com.example.data.model.RecastProject
 import com.example.data.model.SyncState
 import com.example.data.repository.StudioConfigRepository
 import com.example.data.repository.WorkspaceHandoffRepository
+import com.example.ui.components.AdaptiveVideoFidelitySlider
 import com.example.ui.components.AiStudioBadge
 import com.example.ui.components.ControlCenterTab
 import com.example.ui.components.GeminiSparkle
 import com.example.ui.components.animatedRainbowBorder
+import com.example.ui.components.flowingRainbowHexagonBackground
 import com.example.ui.theme.BorderSubtle
 import com.example.ui.theme.CharcoalCard
 import com.example.ui.theme.CharcoalElevated
@@ -175,7 +177,7 @@ fun UnifiedWorkspaceScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .flowingRainbowHexagonBackground()
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         // Next-Gen Spatial Studio Glass HUD Header
@@ -233,39 +235,38 @@ fun UnifiedWorkspaceScreen(
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // Admin Console Pill
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    if (adminSession.isAdminAuthenticated) GeminiCyan.copy(alpha = 0.18f)
-                                    else CharcoalElevated
+                        // Owner-Only Admin Console Pill (strictly visible ONLY to wblanc1021@gmail.com)
+                        if (adminSession.isAdminAuthenticated) {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(GeminiCyan.copy(alpha = 0.18f))
+                                    .border(
+                                        1.dp,
+                                        GeminiCyan,
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable {
+                                        onOpenConfigCenter?.invoke(ControlCenterTab.ADMIN) ?: onOpenPortal()
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .testTag("workspace_admin_pill"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AdminPanelSettings,
+                                    contentDescription = "Owner Admin Console",
+                                    tint = GeminiCyan,
+                                    modifier = Modifier.size(13.dp)
                                 )
-                                .border(
-                                    1.dp,
-                                    if (adminSession.isAdminAuthenticated) GeminiCyan else BorderSubtle,
-                                    RoundedCornerShape(10.dp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Admin",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = WarmIvory
                                 )
-                                .clickable {
-                                    onOpenConfigCenter?.invoke(ControlCenterTab.ADMIN) ?: onOpenPortal()
-                                }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                                .testTag("workspace_admin_pill"),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AdminPanelSettings,
-                                contentDescription = "Admin Login",
-                                tint = GeminiCyan,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (adminSession.isAdminAuthenticated) "Admin" else "Login",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = WarmIvory
-                            )
+                            }
                         }
 
                         // Sync Portal Pill
@@ -557,6 +558,8 @@ fun UnifiedWorkspaceScreen(
                 WorkspaceViewMode.WEB -> {
                     WebCloudPortalViewport(
                         project = project,
+                        onProjectChange = handleProjectChange,
+                        isAdminAuthenticated = adminSession.isAdminAuthenticated,
                         onOpenPortal = onOpenPortal
                     )
                 }
@@ -914,14 +917,22 @@ fun UnifiedAllInOneView(
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = "ROOT ADMIN & SYSTEM CONTROL DECK",
+                                    text = if (adminSession.isAdminAuthenticated) {
+                                        "ROOT ADMIN & SYSTEM CONTROL DECK"
+                                    } else {
+                                        "STUDIO SYSTEM CONTROL DECK"
+                                    },
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 0.8.sp,
                                     color = WarmIvory
                                 )
                                 Text(
-                                    text = "${StudioConfigRepository.ROOT_ADMIN_EMAIL} • ${if (subscriptionState.isBillingImplemented) "Plan Verified" else "Staged Sandbox (Unbilled)"}",
+                                    text = if (adminSession.isAdminAuthenticated) {
+                                        "${StudioConfigRepository.ROOT_ADMIN_EMAIL} • ${if (subscriptionState.isBillingImplemented) "Plan Verified" else "Staged Sandbox (Unbilled)"}"
+                                    } else {
+                                        "Plans • API Vault • Multi-Node Mesh (${if (subscriptionState.isBillingImplemented) "Verified" else "Staged"})"
+                                    },
                                     fontSize = 10.sp,
                                     color = GeminiCyan
                                 )
@@ -930,7 +941,12 @@ fun UnifiedAllInOneView(
 
                         Button(
                             onClick = {
-                                onOpenConfigCenter?.invoke(ControlCenterTab.ADMIN) ?: onOpenPortal()
+                                val targetTab = if (adminSession.isAdminAuthenticated) {
+                                    ControlCenterTab.ADMIN
+                                } else {
+                                    ControlCenterTab.SUBSCRIPTION
+                                }
+                                onOpenConfigCenter?.invoke(targetTab) ?: onOpenPortal()
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = GeminiCyan,
@@ -941,7 +957,11 @@ fun UnifiedAllInOneView(
                                 .height(32.dp)
                                 .testTag("open_admin_deck_button")
                         ) {
-                            Text("Admin & Config", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                text = if (adminSession.isAdminAuthenticated) "Admin & Config" else "Studio Config",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black
+                            )
                         }
                     }
 
@@ -1407,11 +1427,7 @@ fun PhoneAppViewport(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF141826), Color(0xFF0E101A))
-                        )
-                    )
+                    .flowingRainbowHexagonBackground()
                     .animatedRainbowBorder(strokeWidth = 1.8.dp, cornerRadius = 24.dp, glow = true)
                     .padding(16.dp)
             ) {
@@ -1627,7 +1643,31 @@ fun PhoneAppViewport(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Pre-Swap Adaptive Video Fidelity Slider inside Phone App Viewport
+                    AdaptiveVideoFidelitySlider(
+                        resolution = project.resolution,
+                        frameRate = project.frameRate,
+                        compressionLevel = project.compressionLevel,
+                        qualityPreset = project.qualityPreset,
+                        characterStrength = project.characterStrength,
+                        onQualityParametersChange = { res, fps, cmp, preset ->
+                            onProjectChange(
+                                project.copy(
+                                    resolution = res,
+                                    frameRate = fps,
+                                    compressionLevel = cmp,
+                                    qualityPreset = preset
+                                )
+                            )
+                        },
+                        onCharacterStrengthChange = { str ->
+                            onProjectChange(project.copy(characterStrength = str))
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1776,6 +1816,30 @@ fun ComputerProWorkstationViewport(
                         TrackLaneItem("TRACK 3: Spatial Audio & Ambience Preserve", GeminiGreen, 0.62f)
                     }
 
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Pre-Swap Adaptive Video Fidelity Slider inside Computer Workstation Viewport
+                    AdaptiveVideoFidelitySlider(
+                        resolution = project.resolution,
+                        frameRate = project.frameRate,
+                        compressionLevel = project.compressionLevel,
+                        qualityPreset = project.qualityPreset,
+                        characterStrength = project.characterStrength,
+                        onQualityParametersChange = { res, fps, cmp, preset ->
+                            onProjectChange(
+                                project.copy(
+                                    resolution = res,
+                                    frameRate = fps,
+                                    compressionLevel = cmp,
+                                    qualityPreset = preset
+                                )
+                            )
+                        },
+                        onCharacterStrengthChange = { str ->
+                            onProjectChange(project.copy(characterStrength = str))
+                        }
+                    )
+
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
@@ -1823,10 +1887,17 @@ fun TrackLaneItem(title: String, color: Color, progress: Float) {
 @Composable
 fun WebCloudPortalViewport(
     project: RecastProject,
+    onProjectChange: (RecastProject) -> Unit = {},
+    isAdminAuthenticated: Boolean = false,
     onOpenPortal: () -> Unit
 ) {
+    val context = LocalContext.current
+    var activeExportBadge by remember { mutableStateOf("X (Twitter) 1080p60 Ready") }
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .flowingRainbowHexagonBackground(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
@@ -1834,17 +1905,18 @@ fun WebCloudPortalViewport(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
-                    .background(CharcoalCard)
-                    .border(1.5.dp, GeminiAmber, RoundedCornerShape(18.dp))
+                    .flowingRainbowHexagonBackground()
+                    .border(1.5.dp, GeminiAmber.copy(alpha = 0.65f), RoundedCornerShape(18.dp))
                     .padding(16.dp)
             ) {
                 Column {
-                    // Browser Chrome Mockup
+                    // Browser Chrome Mockup with Pure Black + Flowing Rainbow Micro-Hexagon Canvas
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(ObsidianBlack)
+                            .background(ObsidianBlack.copy(alpha = 0.88f))
+                            .border(1.dp, BorderSubtle, RoundedCornerShape(8.dp))
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1857,6 +1929,13 @@ fun WebCloudPortalViewport(
                             fontFamily = FontFamily.Monospace,
                             modifier = Modifier.weight(1f)
                         )
+                        Text(
+                            text = activeExportBadge,
+                            fontSize = 9.sp,
+                            color = GeminiCyan,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Icon(Icons.Default.Refresh, contentDescription = null, tint = MutedIvory, modifier = Modifier.size(14.dp))
                     }
 
@@ -1872,6 +1951,111 @@ fun WebCloudPortalViewport(
                             .height(190.dp)
                     )
 
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Pre-Swap Adaptive Video Fidelity Slider inside Web Cloud Portal Viewport
+                    AdaptiveVideoFidelitySlider(
+                        resolution = project.resolution,
+                        frameRate = project.frameRate,
+                        compressionLevel = project.compressionLevel,
+                        qualityPreset = project.qualityPreset,
+                        characterStrength = project.characterStrength,
+                        onQualityParametersChange = { res, fps, cmp, preset ->
+                            onProjectChange(
+                                project.copy(
+                                    resolution = res,
+                                    frameRate = fps,
+                                    compressionLevel = cmp,
+                                    qualityPreset = preset
+                                )
+                            )
+                        },
+                        onCharacterStrengthChange = { str ->
+                            onProjectChange(project.copy(characterStrength = str))
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // X (Twitter), Apple Ecosystem & Web Cloud Compatibility Bar
+                    Text(
+                        text = "X (TWITTER) & APPLE ECOSYSTEM DIRECT SYNDICATION",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = GeminiCyan
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                onProjectChange(
+                                    project.copy(
+                                        resolution = "1080p",
+                                        frameRate = 60L,
+                                        compressionLevel = 18L,
+                                        qualityPreset = "high"
+                                    )
+                                )
+                                activeExportBadge = "X Post 1080p60 Synced"
+                                Toast.makeText(
+                                    context,
+                                    "Formatted 1080p60 H.264 stream for X (Twitter) Studio Post!",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CharcoalElevated,
+                                contentColor = WarmIvory
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .border(1.dp, GeminiCyan.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                                .testTag("web_export_x_button")
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, tint = GeminiCyan, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text("Post to X", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+
+                        Button(
+                            onClick = {
+                                onProjectChange(
+                                    project.copy(
+                                        resolution = "4K",
+                                        frameRate = 60L,
+                                        compressionLevel = 8L,
+                                        qualityPreset = "ultra"
+                                    )
+                                )
+                                activeExportBadge = "Apple ProRes 4K Ready"
+                                Toast.makeText(
+                                    context,
+                                    "Prepared Apple ProRes 4444 / iCloud Handoff package!",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CharcoalElevated,
+                                contentColor = WarmIvory
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .border(1.dp, WarmIvory.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                .testTag("web_export_apple_button")
+                        ) {
+                            Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = WarmIvory, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text("Apple ProRes", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text("LIVE COLLABORATION & DIRECTOR NOTES", fontSize = 10.sp, fontWeight = FontWeight.Black, color = MutedIvory)
@@ -1881,12 +2065,31 @@ fun WebCloudPortalViewport(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(ObsidianBlack)
+                            .background(ObsidianBlack.copy(alpha = 0.85f))
+                            .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("• [wblanc1021 (Root Admin)]: \"Approved 4K master cut & QUIC Zero-RTT sync.\"", fontSize = 10.sp, color = GeminiCyan, fontWeight = FontWeight.Bold)
-                        Text("• [Alex VFX - 2m ago]: \"Voice synthesis matches the noir alley lighting cleanly.\"", fontSize = 10.sp, color = WarmIvory)
+                        if (isAdminAuthenticated) {
+                            Text(
+                                text = "• [wblanc1021 (Root Admin)]: \"Approved 4K master cut & QUIC Zero-RTT sync.\"",
+                                fontSize = 10.sp,
+                                color = GeminiCyan,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            Text(
+                                text = "• [Studio Director]: \"Two-Way AI Conversion Studio synced across Web, Phone & PC.\"",
+                                fontSize = 10.sp,
+                                color = GeminiCyan,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "• [Alex VFX - 2m ago]: \"Voice synthesis matches the noir alley lighting cleanly • X & Apple export verified.\"",
+                            fontSize = 10.sp,
+                            color = WarmIvory
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))

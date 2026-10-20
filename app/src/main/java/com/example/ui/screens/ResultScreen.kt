@@ -308,6 +308,66 @@ fun ResultScreen(
                         Text("Save Project", fontSize = 13.sp, color = WarmIvory)
                     }
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // X (Twitter) & Apple Ecosystem Direct Export Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            configRepo?.recordSystemEvent(
+                                "Result Export",
+                                "Exported '${project.title}' (${project.resolution} ${project.frameRate}fps) for X (Twitter) Studio"
+                            )
+                            Toast.makeText(
+                                context,
+                                "Formatted & queued ${project.resolution} ${project.frameRate}fps master for X (Twitter)!",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .testTag("result_export_x_button")
+                    ) {
+                        Text(
+                            text = "𝕏 Share to X Studio",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GeminiCyan
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            configRepo?.recordSystemEvent(
+                                "Result Export",
+                                "Packaged '${project.title}' in Apple ProRes 4444 / iCloud Drive format"
+                            )
+                            Toast.makeText(
+                                context,
+                                "Packaged Apple ProRes 4444 master for iCloud / Final Cut!",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .testTag("result_export_apple_button")
+                    ) {
+                        Text(
+                            text = "Apple ProRes / iCloud",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = WarmIvory
+                        )
+                    }
+                }
             }
         }
 

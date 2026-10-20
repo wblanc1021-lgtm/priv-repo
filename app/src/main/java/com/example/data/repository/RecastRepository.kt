@@ -62,14 +62,21 @@ class RecastRepository(
             if (!snapshot.exists()) {
                 val payload = mapOf(
                     "userId" to uid,
-                    "displayName" to displayName.ifBlank { "Director" },
-                    "email" to email,
+                    "displayName" to displayName.ifBlank { "Director" }.take(100),
+                    "email" to email.take(200),
                     "credits" to 100L,
                     "tier" to "pro",
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
                 docRef.set(payload).await()
+            } else {
+                val updates = mapOf(
+                    "displayName" to displayName.ifBlank { "Director" }.take(100),
+                    "email" to email.take(200),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                docRef.update(updates).await()
             }
         } catch (e: CancellationException) {
             throw e

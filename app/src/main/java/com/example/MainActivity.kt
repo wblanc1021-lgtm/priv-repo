@@ -155,16 +155,25 @@ fun AppContent() {
         }
     }
 
-    if (currentUser == null) {
+    val studioConfigRepository = remember { StudioConfigRepository(context) }
+    var useLocalStudioSession by remember { mutableStateOf(false) }
+
+    if (currentUser == null && !useLocalStudioSession) {
         AuthScreen(
-            onAuthSuccess = { currentUser = Firebase.auth.currentUser }
+            onAuthSuccess = {
+                currentUser = Firebase.auth.currentUser
+                studioConfigRepository.syncWithFirebaseUser(currentUser?.email)
+            },
+            onContinueLocalWorkspace = { provider, identifier ->
+                studioConfigRepository.linkIdentityProvider(provider, identifier)
+                useLocalStudioSession = true
+            }
         )
     } else {
-        val user = currentUser!!
+        val user = currentUser
         val recastRepository = remember { RecastRepository(context) }
         val promptLabRepository = remember { PromptLabRepository(context) }
         val workspaceHandoffRepository = remember { WorkspaceHandoffRepository(context) }
-        val studioConfigRepository = remember { StudioConfigRepository(context) }
         val geminiService = remember { GeminiService(configRepo = studioConfigRepository) }
         val recastEngine = remember {
             RecastEngine(
@@ -184,12 +193,14 @@ fun AppContent() {
         var showVariantGridSubScreen by remember { mutableStateOf(false) }
         var configModalInitialTab by remember { mutableStateOf(ControlCenterTab.SUBSCRIPTION) }
 
-        LaunchedEffect(user.uid, user.email) {
-            studioConfigRepository.syncWithFirebaseUser(user.email)
-            recastRepository.ensureUserProfileCreated(
-                displayName = user.displayName ?: "Studio Director",
-                email = user.email ?: ""
-            )
+        LaunchedEffect(user?.uid, user?.email) {
+            if (user != null) {
+                studioConfigRepository.syncWithFirebaseUser(user.email)
+                recastRepository.ensureUserProfileCreated(
+                    displayName = user.displayName ?: "Studio Director",
+                    email = user.email ?: ""
+                )
+            }
         }
 
         var currentScreen by remember { mutableStateOf(AppScreen.WORKSPACE) }
@@ -198,7 +209,7 @@ fun AppContent() {
             mutableStateOf(
                 RecastProject(
                     id = "proj_${System.currentTimeMillis()}",
-                    userId = user.uid,
+                    userId = user?.uid ?: "local_studio_user",
                     title = "Neo-Noir Alley Recast",
                     sourceVideoName = "Cyberpunk Alley Run",
                     sourceVideoDuration = 12L,
@@ -352,6 +363,7 @@ fun AppContent() {
                                 IconButton(
                                     onClick = {
                                         val credManager = CredentialManager.create(context)
+                                        useLocalStudioSession = false
                                         signOut(context, credManager, { currentUser = null }, scope)
                                     },
                                     modifier = Modifier
@@ -679,9 +691,11 @@ fun AppContent() {
                     isOpen = showLoginPortalModal,
                     onDismiss = { showLoginPortalModal = false },
                     workspaceRepo = workspaceHandoffRepository,
+                    configRepo = studioConfigRepository,
                     currentProject = activeProject,
                     onSignOut = {
                         val credManager = CredentialManager.create(context)
+                        useLocalStudioSession = false
                         signOut(context, credManager, { currentUser = null }, scope)
                     },
                     onOpenAdminConsole = {

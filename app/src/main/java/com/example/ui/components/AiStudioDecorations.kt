@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +52,7 @@ import com.example.ui.theme.GeminiAmber
 import com.example.ui.theme.GeminiBlue
 import com.example.ui.theme.GeminiCoral
 import com.example.ui.theme.GeminiCyan
+import com.example.ui.theme.GeminiGreen
 import com.example.ui.theme.GeminiPink
 import com.example.ui.theme.GeminiPurple
 import com.example.ui.theme.GeminiViolet
@@ -63,8 +65,10 @@ import com.example.ui.theme.PlusJakartaSansFontFamily
 import com.example.ui.theme.StudioRainbowList
 import com.example.ui.theme.WarmIvory
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Clean, non-spinning studio accent brush used for workspace indicators and subtle dividers.
@@ -252,68 +256,196 @@ fun AiStudioRainbowCard(
 }
 
 /**
- * Fullscreen ambient background with subtle, calm studio lighting gradients.
+ * Modifier that renders a pure black background with a slowly flowing, whisper-subtle shifting
+ * AI Studio rainbow micro-hexagon lattice. Large regions of the surface remain pure black while
+ * ribbons of tiny rainbow hexagons gently drift across the viewport.
+ */
+@Composable
+fun Modifier.flowingRainbowHexagonBackground(
+    hexRadiusDp: Dp = 8.5.dp,
+    maxPatternAlpha: Float = 0.17f
+): Modifier {
+    val infiniteTransition = rememberInfiniteTransition(label = "hex_rainbow_flow")
+    val flowPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 22000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "hex_flow_phase"
+    )
+    val colorShift by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 14000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "hex_color_shift"
+    )
+
+    return this
+        .background(Color(0xFF020306))
+        .drawBehind {
+            drawFlowingMicroHexagonLattice(
+                flowPhase = flowPhase,
+                colorShift = colorShift,
+                hexRadiusPx = hexRadiusDp.toPx(),
+                maxAlpha = maxPatternAlpha
+            )
+        }
+}
+
+/**
+ * Draws the subtle flowing AI Studio rainbow micro-hexagon honeycomb pattern over pure black,
+ * keeping large areas of the screen completely black and illuminating only the drifting wave streams.
+ */
+private fun DrawScope.drawFlowingMicroHexagonLattice(
+    flowPhase: Float,
+    colorShift: Float,
+    hexRadiusPx: Float,
+    maxAlpha: Float
+) {
+    val w = size.width
+    val h = size.height
+    if (w <= 0f || h <= 0f) return
+
+    // Deep pitch-black base
+    drawRect(color = Color(0xFF020306))
+
+    // Very soft, barely-perceptible ambient under-glow along the flowing ribbon path
+    val stream1Center = Offset(
+        x = w * (0.5f + 0.36f * cos(flowPhase)),
+        y = h * (0.32f + 0.22f * sin(flowPhase * 1.3f))
+    )
+    val stream2Center = Offset(
+        x = w * (0.5f - 0.38f * sin(flowPhase * 0.85f)),
+        y = h * (0.72f + 0.20f * cos(flowPhase))
+    )
+
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(GeminiBlue.copy(alpha = 0.045f), Color.Transparent),
+            center = stream1Center,
+            radius = w * 0.52f
+        ),
+        radius = w * 0.52f,
+        center = stream1Center
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(GeminiViolet.copy(alpha = 0.04f), Color.Transparent),
+            center = stream2Center,
+            radius = w * 0.48f
+        ),
+        radius = w * 0.48f,
+        center = stream2Center
+    )
+
+    val r = hexRadiusPx.coerceAtLeast(10f)
+    val hexHeight = sqrt(3f) * r
+    val horizStep = 1.5f * r
+    val vertStep = hexHeight
+
+    val cols = (w / horizStep).toInt() + 2
+    val rows = (h / vertStep).toInt() + 2
+    val strokePx = 0.7.dp.toPx()
+
+    val rainbowPalette = listOf(
+        GeminiBlue,
+        GeminiCyan,
+        GeminiGreen,
+        GeminiAmber,
+        GeminiCoral,
+        GeminiPink,
+        GeminiPurple,
+        GeminiViolet
+    )
+
+    val hexPath = Path()
+
+    for (col in 0..cols) {
+        val cx = col * horizStep
+        val yOffset = if (col % 2 == 1) vertStep * 0.5f else 0f
+        val nx = cx / w
+
+        for (row in 0..rows) {
+            val cy = row * vertStep + yOffset
+            if (cy < -r || cy > h + r) continue
+            val ny = cy / h
+
+            // Two flowing ribbon waves across normalized screen coordinates (nx, ny)
+            // Keep ~55% of the screen completely black by thresholding the wave envelope
+            val wavePrimary = sin(nx * 5.2f + ny * 3.8f - flowPhase) *
+                cos(ny * 4.4f - nx * 2.6f + flowPhase * 0.7f)
+            val waveSecondary = cos(nx * 4.0f - ny * 5.0f + flowPhase * 1.15f)
+
+            val combinedWave = (wavePrimary * 0.65f + waveSecondary * 0.35f)
+            // Only illuminate cells inside the flowing stream (combinedWave > 0.14f); keep rest pure black
+            if (combinedWave <= 0.14f) continue
+
+            val normalizedIntensity = ((combinedWave - 0.14f) / 0.86f).coerceIn(0f, 1f)
+            val cellAlpha = (normalizedIntensity * maxAlpha).coerceIn(0.025f, maxAlpha)
+
+            // Smooth shifting AI Studio rainbow color selection per micro-hexagon
+            val huePos = ((nx * 1.4f + ny * 1.1f + colorShift * 2f) % 1f).let {
+                if (it < 0f) it + 1f else it
+            }
+            val paletteFloatIdx = huePos * rainbowPalette.size
+            val idxA = paletteFloatIdx.toInt() % rainbowPalette.size
+            val idxB = (idxA + 1) % rainbowPalette.size
+            val frac = paletteFloatIdx - paletteFloatIdx.toInt()
+            val cA = rainbowPalette[idxA]
+            val cB = rainbowPalette[idxB]
+
+            val cellColor = Color(
+                red = cA.red + (cB.red - cA.red) * frac,
+                green = cA.green + (cB.green - cA.green) * frac,
+                blue = cA.blue + (cB.blue - cA.blue) * frac,
+                alpha = cellAlpha
+            )
+
+            hexPath.reset()
+            val innerR = r * 0.88f
+            for (v in 0 until 6) {
+                val angleRad = (PI / 3.0 * v).toFloat()
+                val vx = cx + innerR * cos(angleRad)
+                val vy = cy + innerR * sin(angleRad)
+                if (v == 0) {
+                    hexPath.moveTo(vx, vy)
+                } else {
+                    hexPath.lineTo(vx, vy)
+                }
+            }
+            hexPath.close()
+
+            drawPath(
+                path = hexPath,
+                color = cellColor,
+                style = Stroke(width = strokePx)
+            )
+        }
+    }
+}
+
+/**
+ * Fullscreen ambient background for both the Android App and Webpage viewports:
+ * Pure black backdrop with a slowly flowing, subtle shifting AI Studio rainbow micro-hexagon pattern
+ * that flows around the screen while keeping large portions of the screen pure black.
  */
 @Composable
 fun AiStudioAmbientBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "ambient_orbs")
-    val t by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 2f * PI.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(16000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "ambient_phase"
-    )
-
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ObsidianBlack)
-            .drawBehind {
-                val w = size.width
-                val h = size.height
-
-                val x1 = w * 0.22f + cos(t) * 35f
-                val y1 = h * 0.14f + sin(t) * 24f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(GeminiBlue.copy(alpha = 0.12f), Color.Transparent),
-                        center = Offset(x1, y1),
-                        radius = w * 0.65f
-                    ),
-                    radius = w * 0.65f,
-                    center = Offset(x1, y1)
-                )
-
-                val x2 = w * 0.85f - sin(t) * 30f
-                val y2 = h * 0.48f + cos(t) * 25f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(GeminiViolet.copy(alpha = 0.10f), Color.Transparent),
-                        center = Offset(x2, y2),
-                        radius = w * 0.7f
-                    ),
-                    radius = w * 0.7f,
-                    center = Offset(x2, y2)
-                )
-
-                val x3 = w * 0.42f + cos(t + 1f) * 28f
-                val y3 = h * 0.86f - sin(t + 1f) * 20f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(GeminiCoral.copy(alpha = 0.08f), Color.Transparent),
-                        center = Offset(x3, y3),
-                        radius = w * 0.6f
-                    ),
-                    radius = w * 0.6f,
-                    center = Offset(x3, y3)
-                )
-            }
+            .flowingRainbowHexagonBackground(
+                hexRadiusDp = 8.5.dp,
+                maxPatternAlpha = 0.17f
+            )
     ) {
         content()
     }

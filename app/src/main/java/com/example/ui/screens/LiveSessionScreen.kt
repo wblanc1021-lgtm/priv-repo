@@ -135,6 +135,7 @@ import kotlin.math.sin
 enum class MeetingPlatform(val displayName: String, val appTag: String) {
     ZOOM("Zoom Meetings", "Virtual Camera"),
     FACETIME("Apple FaceTime", "Continuity Feed"),
+    X_SPACES_LIVE("X Spaces / Live", "X Studio RTMP"),
     GOOGLE_MEET("Google Meet", "WebRTC Direct"),
     TEAMS("Microsoft Teams", "UVC Driver"),
     OBS_STUDIO("OBS / Twitch", "Virtual Output")

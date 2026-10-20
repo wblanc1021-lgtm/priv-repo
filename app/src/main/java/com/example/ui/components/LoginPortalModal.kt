@@ -77,6 +77,8 @@ import com.example.data.local.entity.ProjectSyncStateEntity
 import com.example.data.model.DeviceNode
 import com.example.data.model.RecastProject
 import com.example.data.model.SyncState
+import com.example.data.repository.AdminSessionState
+import com.example.data.repository.StudioConfigRepository
 import com.example.data.repository.WorkspaceHandoffRepository
 import com.example.ui.theme.BorderSubtle
 import com.example.ui.theme.CharcoalCard
@@ -84,6 +86,7 @@ import com.example.ui.theme.CharcoalElevated
 import com.example.ui.theme.GeminiAmber
 import com.example.ui.theme.GeminiCyan
 import com.example.ui.theme.GeminiGreen
+import com.example.ui.theme.GeminiPurple
 import com.example.ui.theme.MutedIvory
 import com.example.ui.theme.NeonOrange
 import com.example.ui.theme.ObsidianBlack
@@ -96,6 +99,7 @@ fun LoginPortalModal(
     isOpen: Boolean,
     onDismiss: () -> Unit,
     workspaceRepo: WorkspaceHandoffRepository,
+    configRepo: StudioConfigRepository? = null,
     currentProject: RecastProject,
     onSignOut: () -> Unit,
     onOpenAdminConsole: (() -> Unit)? = null,
@@ -106,6 +110,7 @@ fun LoginPortalModal(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val currentUser = Firebase.auth.currentUser
+    val adminSession = configRepo?.adminSession?.collectAsState()?.value ?: AdminSessionState()
     val devices by workspaceRepo.devices.collectAsState()
     val syncState by workspaceRepo.syncState.collectAsState()
     val lastSyncedTime by workspaceRepo.lastSyncedTime.collectAsState()
@@ -242,13 +247,21 @@ fun LoginPortalModal(
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
                                             Text(
-                                                text = currentUser?.displayName ?: "Root Admin • FrameShift Director",
+                                                text = currentUser?.displayName ?: if (adminSession.isAdminAuthenticated) {
+                                                    "Root Admin • FrameShift Director"
+                                                } else {
+                                                    "Studio Director (${adminSession.activeAuthProvider})"
+                                                },
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 15.sp,
                                                 color = WarmIvory
                                             )
                                             Text(
-                                                text = currentUser?.email ?: "wblanc1021@gmail.com",
+                                                text = currentUser?.email ?: if (adminSession.isAdminAuthenticated) {
+                                                    StudioConfigRepository.ROOT_ADMIN_EMAIL
+                                                } else {
+                                                    adminSession.activeUserHandle.ifBlank { "Authenticated Studio Session" }
+                                                },
                                                 fontSize = 12.sp,
                                                 color = GeminiCyan,
                                                 fontFamily = FontFamily.Monospace
@@ -265,7 +278,11 @@ fun LoginPortalModal(
                                                 )
                                                 Spacer(modifier = Modifier.width(5.dp))
                                                 Text(
-                                                    text = "Root Admin Verified • Google Identity",
+                                                    text = if (adminSession.isAdminAuthenticated) {
+                                                        "Root Admin Verified • ${adminSession.activeAuthProvider} Identity"
+                                                    } else {
+                                                        "Verified ${adminSession.activeAuthProvider} Identity •Linked: ${adminSession.linkedProviders.joinToString(", ")}"
+                                                    },
                                                     fontSize = 10.sp,
                                                     color = GeminiGreen,
                                                     fontWeight = FontWeight.Medium
@@ -296,13 +313,73 @@ fun LoginPortalModal(
                                     }
                                 }
 
-                                if (onOpenAdminConsole != null || onOpenSubscriptions != null) {
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Multi-Identity Provider Federation Row (Google • Apple • X • Email)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    listOf(
+                                        Triple("Google", "Google SSO", GeminiCyan),
+                                        Triple("Apple", "Apple ID", WarmIvory),
+                                        Triple("X", "X (@studio)", NeonOrange),
+                                        Triple("Email", "Email Vault", GeminiPurple)
+                                    ).forEach { (providerKey, label, accent) ->
+                                        val isLinked = adminSession.linkedProviders.contains(providerKey)
+                                        val isActive = adminSession.activeAuthProvider.equals(providerKey, ignoreCase = true)
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    if (isActive) accent.copy(alpha = 0.22f)
+                                                    else if (isLinked) accent.copy(alpha = 0.10f)
+                                                    else ObsidianBlack
+                                                )
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isActive) accent else if (isLinked) accent.copy(alpha = 0.45f) else BorderSubtle,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable {
+                                                    configRepo?.linkIdentityProvider(
+                                                        providerName = providerKey,
+                                                        identifier = when (providerKey) {
+                                                            "Apple" -> "director@icloud.com"
+                                                            "X" -> "@frameshift_x"
+                                                            "Email" -> currentUser?.email ?: "creator@frameshift.ai"
+                                                            else -> currentUser?.email ?: "google.sso@frameshift.ai"
+                                                        }
+                                                    )
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Linked & activated $label identity across mesh",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (isLinked) "✓ $label" else "+ $label",
+                                                fontSize = 9.sp,
+                                                fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                color = if (isLinked) accent else MutedIvory,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if ((adminSession.isAdminAuthenticated && onOpenAdminConsole != null) || onOpenSubscriptions != null) {
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        if (onOpenAdminConsole != null) {
+                                        // Owner-only Root Admin Console button
+                                        if (adminSession.isAdminAuthenticated && onOpenAdminConsole != null) {
                                             Button(
                                                 onClick = {
                                                     onDismiss()
@@ -315,7 +392,7 @@ fun LoginPortalModal(
                                                 shape = RoundedCornerShape(8.dp),
                                                 modifier = Modifier.weight(1f).height(34.dp)
                                             ) {
-                                                Text("Root Admin Login", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                                Text("Owner Admin Console", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                             }
                                         }
                                         if (onOpenSubscriptions != null) {
